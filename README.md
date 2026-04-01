@@ -3,6 +3,7 @@ A script utilizing aircrack-ng to (somewhat) automatically crack WiFi handshakes
 ## Prerequisites
 - an Arch or Debian based Linux distro
 - an existing wordlist (https://weakpass.com)
+- a wireless interface that supports monitor mode (and its respective driver)
 - Packages:
   - `aircrack-ng`
   - `hashcat`
