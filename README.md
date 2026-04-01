@@ -9,3 +9,4 @@ A script utilizing aircrack-ng to (somewhat) automatically crack WiFi handshakes
   - `hashcat`
   - `hcxtools`
 - For GPU Acceleration (optional), reference hashcat's requirements: https://hashcat.net
+- permission to test on targeted networks
