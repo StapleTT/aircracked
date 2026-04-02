@@ -17,6 +17,15 @@ TARGET_CHANNEL=""
 TARGET_CLIENT=""
 CAPTURE_FILE=""
 
+# Args
+SHOW_HIDDEN=0
+
+for arg in "$@"; do
+  case "$arg" in
+  --show-hidden) SHOW_HIDDEN=1 ;;
+  esac
+done
+
 # Dependency checks
 check_dependencies() {
   local warnings=()
@@ -84,12 +93,12 @@ confirm() {
 }
 
 bail() {
-  echo -e "\n${RED}  [!] $1${NC}\n"
+  echo -e "\n${RED}  [!] $1${NC}"
   exit 1
 }
 
 cleanup() {
-  echo -e "\n\n  ${CYAN}[*] Restoring network connectivity...${NC}"
+  echo -e "\n  ${CYAN}[*] Restoring network connectivity...${NC}"
   sudo systemctl restart NetworkManager
   echo -e "  ${GREEN}[✓] NetworkManager restarted.${NC}\n"
 }
@@ -320,17 +329,31 @@ stage_scan() {
   echo -e "    ${BOLD}$(printf '%-4s %-20s %-19s %-5s %s' '#' 'ESSID' 'BSSID' 'CH' 'AUTH')${NC}"
   echo -e "    ──────────────────────────────────────────────────────"
 
+  local display_indices=()
   for i in "${!NETWORKS[@]}"; do
     IFS=',' read -ra FIELDS <<<"${NETWORKS[$i]}"
+    N_ESSID=$(echo "${FIELDS[13]}" | xargs)
+
+    if [[ -z "$N_ESSID" && "$SHOW_HIDDEN" -eq 0 ]]; then
+      continue
+    fi
+
+    [[ -z "$N_ESSID" ]] && N_ESSID="(hidden)"
+
     N_BSSID=$(echo "${FIELDS[0]}" | xargs)
     N_CHAN=$(echo "${FIELDS[3]}" | xargs)
     N_AUTH=$(echo "${FIELDS[7]}" | xargs)
-    N_ESSID=$(echo "${FIELDS[13]}" | xargs)
-    [[ -z "$N_ESSID" ]] && N_ESSID="(hidden)"
+
+    display_indices+=("$i")
     printf "    ${BOLD}[%d]${NC} %-20s %-19s %-5s %s\n" \
-      "$((i + 1))" "$N_ESSID" "$N_BSSID" "$N_CHAN" "$N_AUTH"
+      "${#display_indices[@]}" "$N_ESSID" "$N_BSSID" "$N_CHAN" "$N_AUTH"
   done
   echo -e "    ${BOLD}[q]${NC} Quit\n"
+
+  if [[ ${#display_indices[@]} -eq 0 ]]; then
+    echo -e "  ${YELLOW}[!] No networks found. Try running with --show-hidden.${NC}\n"
+    bail "No networks to display."
+  fi
 
   while true; do
     echo -ne "  ${YELLOW}Select a network: ${NC}"
@@ -343,14 +366,14 @@ stage_scan() {
 
     if [[ "$CHOICE" =~ ^[0-9]+$ ]] &&
       [[ "$CHOICE" -ge 1 ]] &&
-      [[ "$CHOICE" -le "${#NETWORKS[@]}" ]]; then
+      [[ "$CHOICE" -le "${#display_indices[@]}" ]]; then
       break
     fi
 
-    echo -e "  ${RED}[!] Invalid selection. Enter a number between 1 and ${#NETWORKS[@]}, or 'q' to quit.${NC}"
+    echo -e "  ${RED}[!] Invalid selection. Enter a number between 1 and ${#display_indices[@]}, or 'q' to quit.${NC}"
   done
 
-  IFS=',' read -ra SELECTED <<<"${NETWORKS[$((CHOICE - 1))]}"
+  IFS=',' read -ra SELECTED <<<"${NETWORKS[${display_indices[$((CHOICE - 1))]}]}"
   TARGET_BSSID=$(echo "${SELECTED[0]}" | xargs)
   TARGET_CHANNEL=$(echo "${SELECTED[3]}" | xargs)
   local selected_essid
@@ -422,7 +445,7 @@ stage_capture() {
   # Confirm handshake
   echo -e "\n  ${YELLOW}[*] Watch the capture window for 'WPA handshake: $TARGET_BSSID'.${NC}"
   echo -e "  ${YELLOW}    Close the capture window once you see it.${NC}\n"
-  echo -ne "  ${YELLOW}    Press Enter once the capture window is closed...${NC}"
+  echo -ne "  ${YELLOW}    Press Enter once the capture window is closed...${NC}\n"
   read -r
   while IFS= read -r -t 0 _; do :; done 2>/dev/null
 
@@ -591,9 +614,9 @@ stage_summary() {
   echo -e "  ${BOLD}Tool used    :${NC} $CRACKER\n"
 
   if [[ -n "$CRACKED_PASSWORD" ]]; then
-    echo -e "  ${GREEN}${BOLD}[✓] Password found: $CRACKED_PASSWORD${NC}\n"
+    echo -e "  ${GREEN}${BOLD}[✓] Password found: $CRACKED_PASSWORD${NC}"
   else
-    echo -e "  ${RED}[!] Password not found. The wordlist did not contain the password.${NC}\n"
+    echo -e "  ${RED}[!] Password not found. The wordlist did not contain the password.${NC}"
   fi
 }
 
