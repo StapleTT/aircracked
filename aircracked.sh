@@ -207,8 +207,8 @@ detect_terminal() {
       TERMINAL="konsole"
       return 0
       ;;
-    tilix)
-      TERMINAL="tilix"
+    qterminal)
+      TERMINAL="qterminal"
       return 0
       ;;
     lxterminal)
@@ -265,8 +265,8 @@ launch_in_terminal() {
   konsole)
     konsole -e bash -c "$wrapped" &
     ;;
-  tilix)
-    tilix -e "bash -c \"$wrapped\"" &
+  qterminal)
+    qterminal -e "bash -c \"$wrapped\"" &
     ;;
   lxterminal)
     lxterminal -e "bash -c \"$wrapped\"" &
