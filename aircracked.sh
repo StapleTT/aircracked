@@ -454,6 +454,7 @@ stage_capture() {
   echo -e "\n  ${YELLOW}[*] Capture window launched. Leave it running in the background.${NC}"
   echo -e "  ${YELLOW}    Wait for it to initialize before continuing.${NC}"
   while IFS= read -r -t 0 _; do :; done 2>/dev/null
+  sleep 3
 
   #Deauth
   echo -e "\n  ${CYAN}[*] Step 2 — Send deauthentication packets${NC}\n"
@@ -542,7 +543,7 @@ stage_crack_aircrack() {
   print_status
 
   while true; do
-    echo -ne "  ${YELLOW}  > Path to wordlist: ${NC}"
+    echo -ne "  ${YELLOW}> Path to wordlist: ${NC}"
     read -r WORDLIST
 
     [[ -z "$WORDLIST" ]] && echo -e "  ${RED}[!] Wordlist path required.${NC}" && continue
@@ -578,7 +579,7 @@ stage_crack_hashcat() {
   print_status
 
   while true; do
-    echo -ne "  ${YELLOW}  > Path to wordlist: ${NC}"
+    echo -ne "  ${YELLOW}> Path to wordlist: ${NC}"
     read -r WORDLIST
 
     [[ -z "$WORDLIST" ]] && echo -e "  ${RED}[!] Wordlist path required.${NC}" && continue
