@@ -254,6 +254,7 @@ launch_in_terminal() {
   kitty) "$TERMINAL" -- bash -c "$wrapped" & ;;
   alacritty) "$TERMINAL" -e bash -c "$wrapped" & ;;
   wezterm) "$TERMINAL" start -- bash -c "$wrapped" & ;;
+  foot) "$TERMINAL" bash -c "$wrapped" & ;;
   *) "$TERMINAL" -e "bash -c \"$wrapped\"" & ;;
   esac
 
