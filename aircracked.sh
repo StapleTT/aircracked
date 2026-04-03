@@ -122,12 +122,23 @@ bail() {
 }
 
 cleanup() {
-  echo -e "\n  ${CYAN}[*] Restoring network connectivity...${NC}"
-  sudo systemctl restart NetworkManager
-  echo -e "  ${GREEN}[✓] NetworkManager restarted.${NC}\n"
+  if [[ "$MONITOR_ENABLED" == "1" ]]; then
+    echo -e "\n\n  ${CYAN}[*] Restoring network connectivity...${NC}"
+    sudo systemctl restart NetworkManager
+    echo -e "  ${GREEN}[✓] NetworkManager restarted.${NC}\n"
+  fi
 }
 
 trap cleanup EXIT
+
+handle_interrupt() {
+  echo -e "\n"
+  if confirm "Are you sure you want to exit?"; then
+    exit 1
+  fi
+}
+
+trap handle_interrupt SIGINT
 
 advance_stage() {
   STAGE=$((STAGE + 1))
@@ -208,6 +219,7 @@ stage_monitor() {
   stty sane
 
   echo -e "\n  ${GREEN}[✓] Monitor mode set on $INTERFACE${NC}"
+  MONITOR_ENABLED=1
   advance_stage
 }
 
