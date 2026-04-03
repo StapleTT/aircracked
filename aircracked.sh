@@ -99,7 +99,7 @@ print_header() {
 }
 
 print_status() {
-  echo -e "\n${BOLD}Current Session Info:${NC}"
+  echo -e "\n  ${BOLD}Current Session Info:${NC}"
   [[ -n "$INTERFACE" ]] && echo -e "  Interface   : ${GREEN}$INTERFACE${NC}"
   [[ -n "$TARGET_BSSID" ]] && echo -e "  BSSID       : ${GREEN}$TARGET_BSSID${NC}"
   [[ -n "$TARGET_CHANNEL" ]] && echo -e "  Channel     : ${GREEN}$TARGET_CHANNEL${NC}"
