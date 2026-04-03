@@ -12,3 +12,13 @@ A script utilizing aircrack-ng to (somewhat) automatically crack WiFi handshakes
   - `hcxtools`
 - For GPU Acceleration (optional), reference hashcat's requirements: https://hashcat.net
 - Authorization to test on targeted networks
+## Getting Started
+```
+git clone https://github.com/StapleTT/aircracked.git
+cd aircracked
+./aircracked.sh
+```
+To show hidden networks, run:
+```
+./aircracked.sh --show-hidden
+```
