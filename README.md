@@ -22,3 +22,5 @@ To show hidden networks, run:
 ```
 ./aircracked.sh --show-hidden
 ```
+## Disclaimer
+This tool is intended for educational and authorized testing purposes only. Only use this tool on networks you own or have explicit written permission to test. Unauthorized use against networks you do not own is illegal and punishable under computer crime laws. The author accepts no responsibility for any misuse or damage caused by this tool. You are solely responsible for your actions.
