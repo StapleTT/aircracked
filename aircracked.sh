@@ -362,13 +362,13 @@ stage_scan() {
   fi
 
   echo -e "\n  Available networks:\n"
-  echo -e "    ${BOLD}$(printf '%-4s %-20s %-19s %-5s %s' '#' 'ESSID' 'BSSID' 'CH' 'AUTH')${NC}"
-  echo -e "    ──────────────────────────────────────────────────────"
+  printf "    %-3s %-20s %-19s %-5s %-6s %s\n" ' #' 'ESSID' 'BSSID' 'CH' 'ENC' 'AUTH'
+  echo -e "    ───────────────────────────────────────────────────────────────"
 
   local display_indices=()
   for i in "${!NETWORKS[@]}"; do
     IFS=',' read -ra FIELDS <<<"${NETWORKS[$i]}"
-    N_ESSID=$(echo "${FIELDS[13]}" | xargs)
+    N_ESSID=$(echo "${FIELDS[13]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
     if [[ -z "$N_ESSID" && "$SHOW_HIDDEN" -eq 0 ]]; then
       continue
@@ -376,13 +376,14 @@ stage_scan() {
 
     [[ -z "$N_ESSID" ]] && N_ESSID="(hidden)"
 
-    N_BSSID=$(echo "${FIELDS[0]}" | xargs)
-    N_CHAN=$(echo "${FIELDS[3]}" | xargs)
-    N_AUTH=$(echo "${FIELDS[7]}" | xargs)
+    N_BSSID=$(echo "${FIELDS[0]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    N_CHAN=$(echo "${FIELDS[3]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    N_ENC=$(echo "${FIELDS[5]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    N_AUTH=$(echo "${FIELDS[7]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
     display_indices+=("$i")
-    printf "    ${BOLD}[%d]${NC} %-20s %-19s %-5s %s\n" \
-      "${#display_indices[@]}" "$N_ESSID" "$N_BSSID" "$N_CHAN" "$N_AUTH"
+    printf "    ${BOLD}[%d]${NC} %-20s %-19s %-5s %-6s %s\n" \
+      "${#display_indices[@]}" "$N_ESSID" "$N_BSSID" "$N_CHAN" "$N_ENC" "$N_AUTH"
   done
   echo -e "    ${BOLD}[q]${NC} Quit\n"
 
