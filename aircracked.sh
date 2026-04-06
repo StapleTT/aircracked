@@ -20,10 +20,31 @@ HASHCAT_AVAILABLE=1
 
 # Args
 SHOW_HIDDEN=0
+WORDLIST_ARG=""
+INTERFACE_ARG=""
 
-for arg in "$@"; do
-  case "$arg" in
-  --show-hidden) SHOW_HIDDEN=1 ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+  --show-hidden)
+    SHOW_HIDDEN=1
+    shift
+    ;;
+  --wordlist | -w)
+    if [[ -z "$2" || "$2" == -* ]]; then
+      echo -e "${RED}  [!] --wordlist requires a filepath argument.${NC}"
+      exit 1
+    fi
+    WORDLIST_ARG="${2/#\~/$HOME}"
+    shift 2
+    ;;
+  --interface | -i)
+    if [[ -z "$2" || "$2" == -* ]]; then
+      echo -e "${RED}  [!] --interface requires an interface name argument.${NC}"
+      exit 1
+    fi
+    INTERFACE_ARG="$2"
+    shift 2
+    ;;
   --help)
     echo -e "
 ${BOLD}${CYAN}Aircracked -- StapleTT${NC}
@@ -32,8 +53,10 @@ ${BOLD}USAGE:${NC}
     ./aircracked.sh [OPTIONS]
 
 ${BOLD}OPTIONS:${NC}
-    --show-hidden    Include hidden networks (no ESSID) in the network selection list
-    --help           Show this help message
+    --wordlist, -w <path>    Specify a wordlist filepath (skips the prompt)
+    --interface, -i <name>   Specify the interface (skips the selection menu)
+    --show-hidden            Include hidden networks (no ESSID) in the network selection list
+    --help                   Show this help message
 
 ${BOLD}CREDITS:${NC}
     Created by StapleTT (https://github.com/StapleTT)
@@ -47,6 +70,9 @@ ${BOLD}DISCLAIMER:${NC}
     for your actions.
 "
     exit 0
+    ;;
+  *)
+    shift
     ;;
   esac
 done
@@ -154,44 +180,52 @@ stage_monitor() {
   while true; do
     print_header "Enable Monitor Mode"
 
-    mapfile -t IFACES < <(ip -br link show | awk '{print $1}')
+    if [[ -n "$INTERFACE_ARG" ]]; then
+      if ! ip link show "$INTERFACE_ARG" &>/dev/null; then
+        bail "Interface '$INTERFACE_ARG' does not exist."
+      fi
+      INTERFACE="$INTERFACE_ARG"
+      echo -e "  ${CYAN}[*] Using interface from argument: ${BOLD}$INTERFACE${NC}"
+    else
+      mapfile -t IFACES < <(ip -br link show | awk '{print $1}')
 
-    if [[ ${#IFACES[@]} -eq 0 ]]; then
-      bail "No network interfaces found."
+      if [[ ${#IFACES[@]} -eq 0 ]]; then
+        bail "No network interfaces found."
+      fi
+
+      echo -e "  Available interfaces:\n"
+      for i in "${!IFACES[@]}"; do
+        STATE=$(ip -br link show "${IFACES[$i]}" | awk '{print $2}')
+        echo -e "    ${BOLD}[$((i + 1))]${NC} ${IFACES[$i]}  (${STATE})"
+      done
+      echo -e "    ${BOLD}[q]${NC} Quit\n"
+
+      # Validate selection inline at the prompt
+      while true; do
+        echo -ne "  ${YELLOW}Select an interface: ${NC}"
+        read -r CHOICE
+
+        # Quit on q/Q
+        if [[ "${CHOICE,,}" == "q" ]]; then
+          echo -e "\n  Goodbye.\n"
+          exit 0
+        fi
+
+        # Accept valid number in range
+        if [[ "$CHOICE" =~ ^[0-9]+$ ]] &&
+          [[ "$CHOICE" -ge 1 ]] &&
+          [[ "$CHOICE" -le "${#IFACES[@]}" ]]; then
+          break
+        fi
+
+        echo -e "  ${RED}[!] Invalid selection. Enter a number between 1 and ${#IFACES[@]}, or 'q' to quit.${NC}"
+      done
+
+      INTERFACE="${IFACES[$((CHOICE - 1))]}"
     fi
 
-    echo -e "  Available interfaces:\n"
-    for i in "${!IFACES[@]}"; do
-      STATE=$(ip -br link show "${IFACES[$i]}" | awk '{print $2}')
-      echo -e "    ${BOLD}[$((i + 1))]${NC} ${IFACES[$i]}  (${STATE})"
-    done
-    echo -e "    ${BOLD}[q]${NC} Quit\n"
-
-    # Validate selection inline at the prompt
-    while true; do
-      echo -ne "  ${YELLOW}Select an interface: ${NC}"
-      read -r CHOICE
-
-      # Quit on q/Q
-      if [[ "${CHOICE,,}" == "q" ]]; then
-        echo -e "\n  Goodbye.\n"
-        exit 0
-      fi
-
-      # Accept valid number in range
-      if [[ "$CHOICE" =~ ^[0-9]+$ ]] &&
-        [[ "$CHOICE" -ge 1 ]] &&
-        [[ "$CHOICE" -le "${#IFACES[@]}" ]]; then
-        break
-      fi
-
-      echo -e "  ${RED}[!] Invalid selection. Enter a number between 1 and ${#IFACES[@]}, or 'q' to quit.${NC}"
-    done
-
-    INTERFACE="${IFACES[$((CHOICE - 1))]}"
-
     # Check for monitor mode support
-    echo -e "\n  ${CYAN}[*] Checking if $INTERFACE supports monitor mode...${NC}\n"
+    echo -e "\n  ${CYAN}[*] Checking if $INTERFACE supports monitor mode...${NC}"
 
     if ! iw phy "$(iw dev "$INTERFACE" info 2>/dev/null | awk '/wiphy/{print "phy"$2}')" \
       info 2>/dev/null | grep -q "monitor"; then
@@ -543,14 +577,22 @@ stage_crack_aircrack() {
   print_header "Crack Handshake — aircrack-ng"
   print_status
 
-  while true; do
-    echo -ne "  ${YELLOW}> Path to wordlist: ${NC}"
-    read -r WORDLIST
+  if [[ -n "$WORDLIST_ARG" ]]; then
+    WORDLIST="$WORDLIST_ARG"
+    echo -e "  ${CYAN}[*] Using wordlist from argument: ${BOLD}$WORDLIST${NC}\n"
+    if [[ ! -f "$WORDLIST" ]]; then
+      bail "File not found: $WORDLIST"
+    fi
+  else
+    while true; do
+      echo -ne "  ${YELLOW}> Path to wordlist: ${NC}"
+      read -r WORDLIST
 
-    [[ -z "$WORDLIST" ]] && echo -e "  ${RED}[!] Wordlist path required.${NC}" && continue
-    [[ ! -f "$WORDLIST" ]] && echo -e "  ${RED}[!] File not found: $WORDLIST${NC}" && continue
-    break
-  done
+      [[ -z "$WORDLIST" ]] && echo -e "  ${RED}[!] Wordlist path required.${NC}" && continue
+      [[ ! -f "$WORDLIST" ]] && echo -e "  ${RED}[!] File not found: $WORDLIST${NC}" && continue
+      break
+    done
+  fi
 
   confirm "Start cracking with aircrack-ng?" || bail "Aborted."
 
@@ -579,14 +621,22 @@ stage_crack_hashcat() {
   print_header "Crack Handshake — hashcat"
   print_status
 
-  while true; do
-    echo -ne "  ${YELLOW}> Path to wordlist: ${NC}"
-    read -r WORDLIST
+  if [[ -n "$WORDLIST_ARG" ]]; then
+    WORDLIST="$WORDLIST_ARG"
+    echo -e "  ${CYAN}[*] Using wordlist from argument: ${BOLD}$WORDLIST${NC}\n"
+    if [[ ! -f "$WORDLIST" ]]; then
+      bail "File not found: $WORDLIST"
+    fi
+  else
+    while true; do
+      echo -ne "  ${YELLOW}> Path to wordlist: ${NC}"
+      read -r WORDLIST
 
-    [[ -z "$WORDLIST" ]] && echo -e "  ${RED}[!] Wordlist path required.${NC}" && continue
-    [[ ! -f "$WORDLIST" ]] && echo -e "  ${RED}[!] File not found: $WORDLIST${NC}" && continue
-    break
-  done
+      [[ -z "$WORDLIST" ]] && echo -e "  ${RED}[!] Wordlist path required.${NC}" && continue
+      [[ ! -f "$WORDLIST" ]] && echo -e "  ${RED}[!] File not found: $WORDLIST${NC}" && continue
+      break
+    done
+  fi
 
   confirm "Start cracking with hashcat?" || bail "Aborted."
 
