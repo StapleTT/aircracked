@@ -5,7 +5,7 @@ A script utilizing aircrack-ng to (somewhat) automatically crack WiFi handshakes
 - Wordlists for testing (https://weakpass.com)
 - Compatible wireless interface that supports:
   - Monitor mode
-  - Paket injection
+  - Packet injection
 - Packages:
   - `aircrack-ng`
   - `hashcat`
